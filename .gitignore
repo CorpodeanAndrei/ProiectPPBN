@@ -1,4 +1,12 @@
-# .gitignore
+# Java
+*.class
+*.jar
+*.war
+*.ear
+target/
+build/
+
+# Python
 __pycache__/
 *.pyc
 *.pyo
@@ -6,7 +14,15 @@ __pycache__/
 .Python
 env/
 venv/
-.venv/
-.env
+
+# IDE
+.vscode/
+.idea/
+*.iml
+
+# OS
 .DS_Store
 Thumbs.db
+
+# Docker
+docker-compose.override.yml

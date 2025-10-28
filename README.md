@@ -1,32 +1,17 @@
-# 💬 Chat Application - Cloud Edition
+# Chat Application - Java EE Server + Python Client
 
-O aplicație de chat în timp real construită cu Python, Flask-SocketIO și Tkinter, deployată în cloud.
+A real-time chat application demonstrating client-server architecture with Java EE backend and Python GUI client.
 
-## 🚀 Caracteristici
+## 🏗️ Architecture
+- **Backend**: Java EE 8 + JAX-RS + Tomcat
+- **Frontend**: Python + Tkinter
+- **Containerization**: Docker
+- **Deployment**: Play with Docker
 
-- Chat în timp real
-- Listă automată cu utilizatori online
-- Notificări join/leave
-- Istoric mesaje
-- Interfață desktop cu Tkinter
-- Deploy cloud cu Railway
+## 🚀 Quick Start
 
-## 🏗️ Structura Proiectului
-
-chat-app/
-├── server/ # Backend Flask-SocketIO
-├── client/ # Client Tkinter
-└── README.md
-
-
-## 🛠️ Instalare și Rulare
-
-### Server (Cloud)
-1. Deploy automat pe Railway.app
-2. Serverul rulează pe: `https://your-app-name.railway.app`
-
-### Client (Local)
+### Server
 ```bash
-cd client
-pip install -r requirements.txt
-python chat_client.py
+cd server
+docker build -t chat-server .
+docker run -p 8080:8080 chat-server
