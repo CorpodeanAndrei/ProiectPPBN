@@ -1,325 +1,178 @@
 import tkinter as tk
-from tkinter import ttk, scrolledtext, messagebox
+from tkinter import scrolledtext, messagebox
 import socketio
-import threading
-import json
-from datetime import datetime
+import requests
 
 class ChatClient:
     def __init__(self):
-        self.sio = socketio.Client()
+        # FORȚEAZĂ POLLING pentru Play-with-Docker
+        self.sio = socketio.Client(engineio_logger=True)
         self.current_user = ""
-        self.server_url = "https://your-app-name.railway.app"  # Înlocuiește cu URL-ul tău
+        # SCHIMBĂ CU URL-UL TĂU REAL din Play-with-Docker
+        self.server_url = "http://ip172-18-0-86-d409j4ol2o9000bn6hig-5000.direct.labs.play-with-docker.com"  # ⚠️ SCHIMBĂ ASTA
         self.setup_socket_events()
         
-        # Creare fereastra principala
         self.root = tk.Tk()
-        self.root.title("Chat Application - Cloud Edition")
-        self.root.geometry("800x600")
-        self.root.configure(bg='#2c3e50')
+        self.root.title("Chat App - Docker Cloud")
+        self.root.geometry("700x500")
+        self.setup_ui()
         
-        self.setup_login_screen()
-        self.setup_chat_screen()
-        
-        self.show_login_screen()
-    
     def setup_socket_events(self):
-        """Configurează event-urile Socket.IO"""
         @self.sio.event
         def connect():
-            print("Conectat la server cloud")
-            self.add_system_message("✅ Conectat la serverul cloud")
-        
-        @self.sio.event
-        def disconnect():
-            print("Deconectat de la server")
-            self.add_system_message("❌ Deconectat de la server")
-        
+            print("✅ Connected to server")
+            self.add_system_message("✅ Connected to server")
+            
         @self.sio.event
         def connect_error(data):
-            print("Eroare de conectare:", data)
-            self.add_system_message("❌ Eroare de conectare la server")
-        
+            print("❌ Connection error:", data)
+            self.add_system_message("❌ Connection failed - trying polling only")
+            # Reîncearcă doar cu polling
+            self.retry_with_polling_only()
+            
+        @self.sio.event
+        def disconnect():
+            self.add_system_message("❌ Disconnected from server")
+            
         @self.sio.event
         def user_joined(data):
-            self.add_system_message(f"👋 {data['username']} s-a alăturat chat-ului")
-        
+            self.add_system_message(f"👋 {data['username']} joined")
+            
         @self.sio.event
         def user_left(data):
-            self.add_system_message(f"👋 {data['username']} a părăsit chat-ul")
-        
+            self.add_system_message(f"👋 {data['username']} left")
+            
         @self.sio.event
         def users_update(data):
             self.update_users_list(data['users'])
-        
+            
         @self.sio.event
         def new_message(data):
             self.display_message(data)
-        
+            
         @self.sio.event
         def message_history(data):
-            for message in data['messages']:
-                self.display_message(message)
+            for msg in data['messages']:
+                self.display_message(msg)
     
-    def setup_login_screen(self):
-        """Setup ecranul de login"""
-        self.login_frame = tk.Frame(self.root, bg='#2c3e50')
-        
-        # Titlu
-        title_label = tk.Label(
-            self.login_frame,
-            text="💬 Chat Application - Cloud",
-            font=('Arial', 24, 'bold'),
-            fg='white',
-            bg='#2c3e50'
-        )
-        title_label.pack(pady=30)
-        
-        # Server info
-        server_label = tk.Label(
-            self.login_frame,
-            text=f"Server: {self.server_url}",
-            font=('Arial', 10),
-            fg='#bdc3c7',
-            bg='#2c3e50'
-        )
-        server_label.pack(pady=10)
-        
-        # Frame pentru input
-        input_frame = tk.Frame(self.login_frame, bg='#2c3e50')
-        input_frame.pack(pady=20)
-        
-        # Label și input pentru username
-        username_label = tk.Label(
-            input_frame,
-            text="Nume de utilizator:",
-            font=('Arial', 12),
-            fg='white',
-            bg='#2c3e50'
-        )
-        username_label.grid(row=0, column=0, padx=5, pady=10, sticky='e')
-        
-        self.username_entry = tk.Entry(
-            input_frame,
-            font=('Arial', 12),
-            width=20
-        )
-        self.username_entry.grid(row=0, column=1, padx=5, pady=10)
-        self.username_entry.bind('<Return>', lambda e: self.login())
-        
-        # Buton login
-        login_btn = tk.Button(
-            input_frame,
-            text="Intră în Chat",
-            font=('Arial', 12, 'bold'),
-            bg='#3498db',
-            fg='white',
-            command=self.login,
-            width=15,
-            height=1
-        )
-        login_btn.grid(row=1, column=0, columnspan=2, pady=20)
-    
-    def setup_chat_screen(self):
-        """Setup ecranul principal de chat"""
-        self.chat_frame = tk.Frame(self.root, bg='#2c3e50')
-        
-        # Header cu buton de logout
-        header_frame = tk.Frame(self.chat_frame, bg='#34495e')
-        header_frame.pack(fill='x', padx=10, pady=10)
-        
-        self.user_label = tk.Label(
-            header_frame,
-            text="",
-            font=('Arial', 12, 'bold'),
-            fg='white',
-            bg='#34495e'
-        )
-        self.user_label.pack(side='left')
-        
-        logout_btn = tk.Button(
-            header_frame,
-            text="Ieși din Chat",
-            font=('Arial', 10),
-            bg='#e74c3c',
-            fg='white',
-            command=self.logout
-        )
-        logout_btn.pack(side='right')
-        
-        # Main content frame
-        main_frame = tk.Frame(self.chat_frame, bg='#2c3e50')
-        main_frame.pack(fill='both', expand=True, padx=10, pady=10)
-        
-        # Lista utilizatori (stânga)
-        users_frame = tk.Frame(main_frame, bg='#34495e')
-        users_frame.pack(side='left', fill='y', padx=(0, 10))
-        
-        users_label = tk.Label(
-            users_frame,
-            text="👥 Utilizatori Online",
-            font=('Arial', 12, 'bold'),
-            fg='white',
-            bg='#34495e'
-        )
-        users_label.pack(pady=10)
-        
-        # Listbox pentru utilizatori
-        self.users_listbox = tk.Listbox(
-            users_frame,
-            font=('Arial', 10),
-            bg='#2c3e50',
-            fg='white',
-            width=20,
-            height=20
-        )
-        self.users_listbox.pack(fill='both', expand=True, padx=10, pady=10)
-        
-        # Zona de chat (dreapta)
-        chat_area_frame = tk.Frame(main_frame, bg='#2c3e50')
-        chat_area_frame.pack(side='right', fill='both', expand=True)
-        
-        # Mesaje
-        messages_label = tk.Label(
-            chat_area_frame,
-            text="💬 Mesaje",
-            font=('Arial', 12, 'bold'),
-            fg='white',
-            bg='#2c3e50'
-        )
-        messages_label.pack(anchor='w')
-        
-        # Scrolled text pentru mesaje
-        self.messages_text = scrolledtext.ScrolledText(
-            chat_area_frame,
-            font=('Arial', 10),
-            bg='#ecf0f1',
-            fg='#2c3e50',
-            width=50,
-            height=20,
-            state='disabled'
-        )
-        self.messages_text.pack(fill='both', expand=True, pady=5)
-        
-        # Input frame
-        input_frame = tk.Frame(chat_area_frame, bg='#2c3e50')
-        input_frame.pack(fill='x', pady=10)
-        
-        self.message_entry = tk.Entry(
-            input_frame,
-            font=('Arial', 12),
-            bg='white',
-            fg='#2c3e50'
-        )
-        self.message_entry.pack(side='left', fill='x', expand=True, padx=(0, 10))
-        self.message_entry.bind('<Return>', lambda e: self.send_message())
-        
-        send_btn = tk.Button(
-            input_frame,
-            text="Trimite",
-            font=('Arial', 12, 'bold'),
-            bg='#27ae60',
-            fg='white',
-            command=self.send_message
-        )
-        send_btn.pack(side='right')
-    
-    def show_login_screen(self):
-        """Arată ecranul de login"""
-        self.chat_frame.pack_forget()
-        self.login_frame.pack(fill='both', expand=True)
-    
-    def show_chat_screen(self):
-        """Arată ecranul principal de chat"""
-        self.login_frame.pack_forget()
-        self.chat_frame.pack(fill='both', expand=True)
-    
-    def login(self):
-        """Conectare la chat"""
-        username = self.username_entry.get().strip()
-        
-        if not username:
-            messagebox.showerror("Eroare", "Te rog introdu un nume de utilizator!")
-            return
-        
+    def retry_with_polling_only(self):
+        """Reîncearcă conexiunea folosind doar polling"""
         try:
-            # Conectare la server CLOUD
-            self.sio.connect(self.server_url)
-            self.current_user = username
+            if self.sio.connected:
+                self.sio.disconnect()
             
-            # Trimite cerere de join
-            self.sio.emit('join', {'username': username})
-            
-            # Actualizează interfața
-            self.user_label.config(text=f'Bun venit, {username}! (Cloud)')
-            self.show_chat_screen()
-            
+            # Forțează doar polling
+            self.sio.connect(self.server_url, transports=['polling'])
+            if self.current_user:
+                self.sio.emit('join', {'username': self.current_user})
+                
         except Exception as e:
-            messagebox.showerror("Eroare", f"Nu mă pot conecta la serverul cloud: {e}")
+            print("Polling also failed:", e)
+            self.add_system_message("❌ Cannot connect to server")
+    
+    def setup_ui(self):
+        # Login Frame
+        self.login_frame = tk.Frame(self.root)
+        tk.Label(self.login_frame, text="Server: " + self.server_url, 
+                font=('Arial', 9), fg='gray').pack(pady=5)
+        tk.Label(self.login_frame, text="Username:", font=('Arial', 12)).pack(pady=5)
+        self.username_entry = tk.Entry(self.login_frame, font=('Arial', 12), width=20)
+        self.username_entry.pack(pady=5)
+        self.username_entry.bind('<Return>', lambda e: self.login())
+        tk.Button(self.login_frame, text="Join Chat", command=self.login, 
+                 font=('Arial', 12), bg='green', fg='white').pack(pady=10)
+        self.login_frame.pack(pady=50)
+        
+        # Chat Frame
+        self.chat_frame = tk.Frame(self.root)
+        
+        # Header
+        header = tk.Frame(self.chat_frame)
+        self.status_label = tk.Label(header, text="Not connected", font=('Arial', 10))
+        self.status_label.pack(side='left')
+        tk.Button(header, text="Leave", command=self.logout, bg='red', fg='white').pack(side='right')
+        header.pack(fill='x', pady=5)
+        
+        # Main content
+        main_content = tk.Frame(self.chat_frame)
+        
+        # Users list
+        users_frame = tk.Frame(main_content)
+        tk.Label(users_frame, text="Online Users", font=('Arial', 11, 'bold')).pack()
+        self.users_listbox = tk.Listbox(users_frame, width=20, height=15)
+        self.users_listbox.pack(fill='both', expand=True)
+        users_frame.pack(side='left', fill='y', padx=5)
+        
+        # Chat area
+        chat_frame = tk.Frame(main_content)
+        self.messages_area = scrolledtext.ScrolledText(chat_frame, width=50, height=15, state='disabled')
+        self.messages_area.pack(fill='both', expand=True)
+        
+        input_frame = tk.Frame(chat_frame)
+        self.message_entry = tk.Entry(input_frame, width=40)
+        self.message_entry.pack(side='left', fill='x', expand=True)
+        self.message_entry.bind('<Return>', lambda e: self.send_message())
+        tk.Button(input_frame, text="Send", command=self.send_message).pack(side='right')
+        input_frame.pack(fill='x', pady=5)
+        
+        chat_frame.pack(side='right', fill='both', expand=True)
+        main_content.pack(fill='both', expand=True)
+        
+    def login(self):
+        username = self.username_entry.get().strip()
+        if not username:
+            messagebox.showerror("Error", "Please enter username")
+            return
+            
+        try:
+            # Încearcă mai întâi cu polling
+            self.sio.connect(self.server_url, transports=['polling', 'websocket'])
+            self.current_user = username
+            self.sio.emit('join', {'username': username})
+            self.login_frame.pack_forget()
+            self.chat_frame.pack(fill='both', expand=True)
+            self.status_label.config(text=f"Connected as: {username}")
+        except Exception as e:
+            messagebox.showerror("Connection Error", 
+                               f"Cannot connect to server.\n\nError: {e}\n\n"
+                               f"Server URL: {self.server_url}")
     
     def logout(self):
-        """Deconectare din chat"""
         if self.sio.connected:
             self.sio.disconnect()
-        
-        self.current_user = ""
-        self.username_entry.delete(0, tk.END)
-        self.messages_text.config(state='normal')
-        self.messages_text.delete(1.0, tk.END)
-        self.messages_text.config(state='disabled')
+        self.chat_frame.pack_forget()
+        self.login_frame.pack(pady=50)
+        self.messages_area.config(state='normal')
+        self.messages_area.delete(1.0, tk.END)
+        self.messages_area.config(state='disabled')
         self.users_listbox.delete(0, tk.END)
-        
-        self.show_login_screen()
     
     def send_message(self):
-        """Trimite mesaj"""
-        message = self.message_entry.get().strip()
-        
-        if message and self.sio.connected:
-            self.sio.emit('send_message', {'text': message})
+        msg = self.message_entry.get().strip()
+        if msg and self.sio.connected:
+            self.sio.emit('send_message', {'text': msg})
             self.message_entry.delete(0, tk.END)
     
-    def display_message(self, message_data):
-        """Afișează un mesaj în chat"""
-        self.messages_text.config(state='normal')
-        
-        # Formatare mesaj
-        timestamp = message_data.get('timestamp', '')
-        username = message_data.get('username', 'Unknown')
-        text = message_data.get('text', '')
-        
-        # Adaugă mesajul
-        self.messages_text.insert(tk.END, f"[{timestamp}] {username}: {text}\n")
-        
-        # Scroll la ultimul mesaj
-        self.messages_text.see(tk.END)
-        self.messages_text.config(state='disabled')
+    def display_message(self, data):
+        self.messages_area.config(state='normal')
+        self.messages_area.insert(tk.END, f"[{data['timestamp']}] {data['username']}: {data['text']}\n")
+        self.messages_area.see(tk.END)
+        self.messages_area.config(state='disabled')
     
-    def add_system_message(self, message):
-        """Adaugă un mesaj de sistem"""
-        self.messages_text.config(state='normal')
-        self.messages_text.insert(tk.END, f"⚡ {message}\n")
-        self.messages_text.see(tk.END)
-        self.messages_text.config(state='disabled')
+    def add_system_message(self, msg):
+        self.messages_area.config(state='normal')
+        self.messages_area.insert(tk.END, f"⚡ {msg}\n")
+        self.messages_area.see(tk.END)
+        self.messages_area.config(state='disabled')
     
     def update_users_list(self, users):
-        """Actualizează lista de utilizatori"""
         self.users_listbox.delete(0, tk.END)
-        
         for user in users:
             self.users_listbox.insert(tk.END, user)
-            
-            # Marchează utilizatorul curent
-            if user == self.current_user:
-                self.users_listbox.itemconfig(tk.END, {'bg': '#3498db', 'fg': 'white'})
     
     def run(self):
-        """Rulează aplicația"""
         self.root.mainloop()
 
 if __name__ == "__main__":
-    print("Pornire client chat...")
-    print("Asigură-te că serverul cloud rulează!")
-    
     client = ChatClient()
     client.run()
